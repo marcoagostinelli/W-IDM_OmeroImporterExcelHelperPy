@@ -8,6 +8,28 @@ import re
 # maximum file name length
 MAX_NAME = 255
 
+#with a given directory eg. dataset5\Timepoint_1\ZStep_1
+#extract the timepoint and ZStep. Covers all possible folder structure outcomes (missing ZStep folder or Timepoint folder...)
+def getTandZ(dirpath):
+    timepoint = ""
+    zStep = ""
+    parts = dirpath.split("\\")
+    if len(parts) == 1:
+        timepoint = "TimePoint_1"
+        zStep = "ZStep_1"
+    elif len(parts) == 3:
+        timepoint= parts[1]
+        zStep = parts[2]
+    elif len(parts) == 2:
+        if parts[1].split("_")[0] == "ZStep":
+            zStep = parts[1]
+            timepoint = "TimePoint_1"
+        elif parts[1].split("_")[0] == "TimePoint":
+            timepoint = parts[1]
+            zStep = "ZStep_1"
+    #return just the number of the timepoint and zStep
+    return timepoint.split("_")[1], zStep.split("_")[1]
+
 #This function returns a json that holds all possible wells/wavelengths/sites. Used for determining incomplet or missing wells
 def getAllWells(htd):
     allWells = {}
@@ -402,18 +424,21 @@ def truncate_name(dirs, max=MAX_NAME):
     new_filename = split[-1]
     return new_filename
 
-def walk_files(root, extensions):
+def walk_files(root, extensions, isSPW):
     """Navigates each file and folder beginning at the root folder and checks for image files.
 
     Args:
         root: path of the root project folder.
         extensions: list of string image file extensions.
+        isSPW: boolean if the images are in the SPW format or not
     Yields:
         Yields file name and file path of each image file found.
     Raises:
     """
     for dirpath, dirnames, files in os.walk(root, topdown=True):
         for file in files:
+            if isSPW:
+                timepoint, zStep = getTandZ(dirpath)
             filename, extension = os.path.splitext(file)
             if extension in extensions:
                 filepath = os.path.join(dirpath, file)
@@ -423,7 +448,10 @@ def walk_files(root, extensions):
                     name, ext = os.path.splitext(f)
                     if (ext == ".json") and (name.lower().count(file.lower()) > 0):
                         json = f
-                yield (file, filepath, json)
+                if isSPW:
+                    yield (file, filepath, json, timepoint, zStep)
+                else:
+                    yield (file, filepath, json)
 
 #creates a dataframe for images using the project/dataset structure
 def create_DataFrame_ProjDataset(root, extensions, columns=["File Name","New File Name","File Path","MMA File Path","Tags"]):
@@ -442,7 +470,7 @@ def create_DataFrame_ProjDataset(root, extensions, columns=["File Name","New Fil
         ValueError: catches value error from walk_files() if encountering a path longer than MAX_NAME characters
     """
     df = pd.DataFrame(columns=columns)
-    walk = walk_files(root, extensions)
+    walk = walk_files(root, extensions, False)
 
     for file, filepath, json in walk:
         # seperate the directories in the path from the ending file
@@ -498,7 +526,7 @@ def create_DataFrame_SPW(root,valid, extensions,htd, columns=["Well_Name","IMAGE
         ValueError: catches value error from walk_files() if encountering a path longer than MAX_NAME characters
     """
     df = pd.DataFrame(columns=columns)
-    walk = walk_files(root, extensions)
+    walk = walk_files(root, extensions, True)
     for file, filepath, json, timepoint, zStep in walk:
 
         #check if the image is valid before adding it to the excel file
@@ -622,6 +650,7 @@ def main(excel,isSPW):
 
     dataset, extensions = read_excel(excel)
     if isSPW:
+
         df = create_DataFrame_SPW(os.path.join(cwd, dataset), extensions)
     else:
         df = create_DataFrame_ProjDataset(os.path.join(cwd, dataset), extensions)
@@ -630,6 +659,6 @@ def main(excel,isSPW):
 
 if __name__ == "__main__":
     #isSPW is used to determine if our images are in the SPW format or not
-    isSPW = False
+    isSPW = True
     #arg = sys.argv[1]
     main("Pazour_OMERO_import_template_wMacros_v06.xlsm",isSPW)
