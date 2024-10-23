@@ -119,6 +119,16 @@ def write_excel(file, df, sheet_number=2, cell="A14"):
     """
     wb = xw.Book(file)
     sheet = wb.sheets[sheet_number]
+
+    # Clear cells starting from the specified cell to the end of the used range
+    clearStart = sheet.range(cell).address
+    usedRange = sheet.used_range
+
+    # define the range to clear
+    clearRange = sheet.range(clearStart,(usedRange.last_cell.row,usedRange.last_cell.column))
+    clearRange.clear()
+
+
     sheet[cell].options(index=False, header=False).value = df
     wb.save(file)
 
