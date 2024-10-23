@@ -425,7 +425,8 @@ def walk_files(root, extensions):
                         json = f
                 yield (file, filepath, json)
 
-def create_DataFrame(root, extensions, columns=["File Name","New File Name","File Path","MMA File Path","Tags"]):
+#creates a dataframe for images using the project/dataset structure
+def create_DataFrame_ProjDataset(root, extensions, columns=["File Name","New File Name","File Path","MMA File Path","Tags"]):
     """Create a DataFrame containing image file info for the root directory.
 
     DataFrame will contain file name, new file name constructed by replacing backslashes in filepath
@@ -473,12 +474,85 @@ def create_DataFrame(root, extensions, columns=["File Name","New File Name","Fil
 
         # add row to the DataFrame
         row = pd.DataFrame([[file, new_filename, filepath, json, tags]], columns=columns)
-        df = df.append(row, ignore_index=True)
+        df = df._append(row, ignore_index=True)
 
     df.sort_values(by="File Name", inplace=True)
     return df
 
-create_DataFrame("Dataset 1", [".czi"])
+#creates a dataframe for images using the SPW structure
+def create_DataFrame_SPW(root,valid, extensions,htd, columns=["Well_Name","IMAGE NAME","File Name","File Path","MMA FILE PATH","Site ID", "Wavelength ID", "Z Score", "TimePoint"]):
+    """Create a DataFrame containing image file info for the root directory.
+
+    DataFrame will contain file name, new file name constructed by replacing backslashes in filepath
+    with underscores, file path, MMA file path for the accompanying json file path, and tags which are the root directories subdirectories seperated by hashtags.
+
+     Args:
+        root: path to a dataset directory continaing subdirectories and image files.
+        valid: a list of valid image names. Only images in this list will be added to the excel file
+        extensions: list of string image file extensions.
+        htd: the htd file dictionary used
+        columns: column names used to create the DataFrame and CSV output.
+     Returns:
+        A DataFrame containing information written to the output csv file.
+     Catches:
+        ValueError: catches value error from walk_files() if encountering a path longer than MAX_NAME characters
+    """
+    df = pd.DataFrame(columns=columns)
+    walk = walk_files(root, extensions)
+    for file, filepath, json, timepoint, zStep in walk:
+
+        #check if the image is valid before adding it to the excel file
+        if file in valid:
+            #TODO use this function when testing on a machine with omero installed in python
+            #match = checkName(file)   
+
+            #TODO will not work if htd is null
+            match = checkName(file, htd)
+            # if there is 1 wavelength and/or site, then set it to 1 because it will not be included in the filename
+            if htd["sites"] == 1 and htd["wavelength"]["number"] == 1:
+                plateName, well, = match.groups()
+                site = "s1"
+                wavelength = "w1"
+            elif htd["sites"] == 1:
+                plateName, well, wavelength = match.groups()
+                site = "s1"
+            elif htd["wavelength"]["number"] == 1:
+                plateName, well, site = match.groups()
+                wavelength = "w1"
+            else:
+                plateName, well, site, wavelength = match.groups()
+
+            # seperate the directories in the path from the ending file
+            dirpath = os.path.dirname(filepath)
+
+            # remove the root part of the dirname
+            dirpath = dirpath.replace(root, "", 1)
+
+            # split dirpath into list of directories
+            dirs = []
+            while 1:
+                head, tail = os.path.split(dirpath)
+                dirs.insert(0, tail)
+                dirpath = head
+                if (head == "") or (head == os.path.sep): # head=="" is first level file, head==os.path.sep is second or greater level file
+                    break
+
+            dirs.append(file)
+
+            # join directories with "_"
+            new_filename = "_".join(dirs)
+
+            # truncate file name if too long
+            if len(new_filename) > MAX_NAME:
+                new_filename = truncate_name(dirs)
+
+            # add row to the DataFrame
+            #TODO: find out image name and MMA File path
+            row = pd.DataFrame([[well,new_filename,file,filepath,json,site,wavelength,zStep,timepoint]],columns=columns)
+            df = df._append(row, ignore_index=True)
+        
+    df.sort_values(by="File Name", inplace=True)
+    return df
 
 # NOTE: : doesn't close file after writing
 def write_excel(file, df, sheet_number=2, cell="A14"):
@@ -533,7 +607,7 @@ def read_excel(file, dataset_sheet=1, image_list_sheet=2, dataset_cell="C10", im
     extensions = extensions.split(",")
     return (dataset, extensions)
 
-def main(excel):
+def main(excel,isSPW):
     """Main method for running the script.
 
     Writes image file data like file and path names to the excel file with the name provided in the argument.
@@ -547,9 +621,15 @@ def main(excel):
     cwd = os.getcwd()
 
     dataset, extensions = read_excel(excel)
-    df = create_DataFrame(os.path.join(cwd, dataset), extensions)
+    if isSPW:
+        df = create_DataFrame_SPW(os.path.join(cwd, dataset), extensions)
+    else:
+        df = create_DataFrame_ProjDataset(os.path.join(cwd, dataset), extensions)
+
     write_excel(excel, df)
 
 if __name__ == "__main__":
-    arg = sys.argv[1]
-    main(arg)
+    #isSPW is used to determine if our images are in the SPW format or not
+    isSPW = False
+    #arg = sys.argv[1]
+    main("Pazour_OMERO_import_template_wMacros_v06.xlsm",isSPW)
