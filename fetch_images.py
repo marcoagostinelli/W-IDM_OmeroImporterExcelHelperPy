@@ -567,8 +567,8 @@ def create_DataFrame_SPW(root,valid, extensions,htd, columns=["Well_Name","IMAGE
 
             dirs.append(file)
 
-            # join directories with "_"
-            new_filename = "_".join(dirs)
+            # get the OME_Image
+            new_filename = "_".join(file.split("_")[:-1])
 
             # truncate file name if too long
             if len(new_filename) > MAX_NAME:
