@@ -435,7 +435,7 @@ def walk_files(root, extensions, isSPW):
         Yields file name and file path of each image file found.
     Raises:
     """
-    for dirpath, dirnames, files in os.walk(root, topdown=True):
+    for dirpath, dirnames, files in os.walk(root.split("\\")[-1], topdown=True):
         for file in files:
             if isSPW:
                 timepoint, zStep = getTandZ(dirpath)
@@ -631,8 +631,8 @@ def read_excel(file, dataset_sheet=1, image_list_sheet=2, dataset_cell="C10", im
     dataset = cell.value.strip()
     sheet = wb.sheets[image_list_sheet]
     cell = sheet[image_list_cell]
-    extensions = cell.value.replace(" ", "")
-    extensions = extensions.split(",")
+    extensions = cell.value
+    extensions = extensions.split(" ")
     return (dataset, extensions)
 
 def main(excel,isSPW):
@@ -650,8 +650,21 @@ def main(excel,isSPW):
 
     dataset, extensions = read_excel(excel)
     if isSPW:
+        #get htd file
+        htd = getHtdFile(dataset)
 
-        df = create_DataFrame_SPW(os.path.join(cwd, dataset), extensions)
+        #using the htd file, get dictionary of valid and refused images. Retreive incomplete wells too
+        validImages,rejectedImages = getImages(dataset,htd)
+        incomplete = getIncompleteWells(htd, validImages)
+
+        #TODO add error if there is something in rejectedImages or incomplete.
+        if rejectedImages or incomplete:
+            print("error")
+
+        #get list of image names to be displayed on excel file
+        validImageNames = getValidImageNames(validImages)
+
+        df = create_DataFrame_SPW(os.path.join(cwd, dataset),validImageNames,extensions,htd)
     else:
         df = create_DataFrame_ProjDataset(os.path.join(cwd, dataset), extensions)
 
